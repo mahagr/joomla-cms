@@ -23,6 +23,8 @@ abstract class JInstallerAdapter
 	 *
 	 * @var    integer
 	 * @since  3.1
+	 *
+	 * @todo   Use $this->extension->extension_id instead.
 	 */
 	protected $currentExtensionId = null;
 
@@ -39,7 +41,9 @@ abstract class JInstallerAdapter
 	 *
 	 * @var    string
 	 * @since  3.1
-	 * */
+	 *
+	 * @todo   Use $this->extension->element instead and remove this one.
+	 */
 	protected $element = null;
 
 	/**
@@ -61,12 +65,10 @@ abstract class JInstallerAdapter
 	/**
 	 * Copy of the XML manifest file.
 	 *
-	 * Making this object public allows extensions to customize the manifest in custom scripts.
-	 *
 	 * @var    string
 	 * @since  3.1
 	 */
-	public $manifest = null;
+	protected $manifest = null;
 
 	/**
 	 * A path to the PHP file that the scriptfile declaration in
@@ -82,6 +84,8 @@ abstract class JInstallerAdapter
 	 *
 	 * @var    string
 	 * @since  3.1
+	 *
+	 * @todo   Use $this->extension->name instead and remove this one.
 	 */
 	protected $name = null;
 
@@ -143,6 +147,7 @@ abstract class JInstallerAdapter
 		$this->manifest = $this->getManifest();
 
 		// Set name and element
+		// TODO: remove and use internally $this->extension instead.
 		$this->name = $this->getName();
 		$this->element = $this->getElement();
 
@@ -150,7 +155,108 @@ abstract class JInstallerAdapter
 		if (!($this->extension instanceof JTable))
 		{
 			$this->extension = JTable::getInstance('extension');
+			$this->extension->name = $this->getName();
+			$this->extension->element = $this->getElement();
+			// TODO: do we want to pre-fill other values as well?
 		}
+	}
+
+	/**
+	 * The magic set method is used to set a property to the object.
+	 *
+	 * @param   string  $name   The name of the property.
+	 * @param   mixed   $value  The value of the property.
+	 *
+	 * @return  void
+	 *
+	 * @since   3.1
+	 */
+	public function __set($name, $value = null) {
+		$this->set($name, $value);
+	}
+
+	/**
+	 * The magic get method is used to get a property from the object.
+	 *
+	 * @param   string  $name  The name of the property.
+	 *
+	 * @return  mixed  The value of the property if set, null otherwise.
+	 *
+	 * @since   3.1
+	 */
+	public function __get($name) {
+		return $this->get($name);
+	}
+
+	/**
+	 * The magic isset method is used to check the state of a property.
+	 *
+	 * @param   string  $name  The name of the property.
+	 *
+	 * @return  boolean  True if set, false otherwise.
+	 *
+	 * @since   3.1
+	 */
+	public function __isset($name) {
+		return $this->get($name) !== null;
+	}
+
+	/**
+	 * Set a property to the object.
+	 *
+	 * @param   string  $name   The name of the property.
+	 * @param   mixed   $value  The value of the property.
+	 *
+	 * @return  void
+	 *
+	 * @since   3.1
+	 */
+	public function set($name, $value = null) {
+		// TODO: We do not want extension scripts to change values from the variables, or do we?
+		// TODO: raise exception?
+	}
+
+	/**
+	 * Get a property from the object.
+	 *
+	 * @param   string  $name  The name of the property.
+	 *
+	 * @return  mixed  The value of the property if set, null otherwise.
+	 *
+	 * @since   3.1
+	 */
+	public function get($name) {
+		switch ($name) {
+			// Backwards compatibility: alias for $this->get('extension')->name
+			case 'name' :
+			// Backwards compatibility: alias for $this->get('extension')->element
+			case 'element' :
+				return $this->extension->$name;
+
+			// Installation method/route.
+			case 'route' :
+			// Manifest script location.
+			// TODO: do we need both source and target? What's the meaning of this field?
+			case 'manifest_script' :
+			// Database object.
+			case 'db' :
+			// Allow extension scripts to access and modify the manifest DOM.
+			case 'manifest' :
+			// Allow extension scripts to access and modify extension instance.
+			case 'extension' :
+				return $this->$name;
+
+			// Deprecated exposed variables since 3.1 (to be removed in 4.0)
+			// TODO: find out if there are more legacy variables to support.
+			// TODO: check if we need to provide alternative methods for these.
+			case 'parent' :
+			case 'install_script' :
+				return $this->$name;
+
+			default :
+				return isset($this->$name) ? $this->$name : null;
+		}
+		return null;
 	}
 
 	/**
@@ -164,6 +270,7 @@ abstract class JInstallerAdapter
 	protected function checkExistingExtension()
 	{
 		// TODO: Prepare generic method
+		// BTW, if the extension exists, we should already have it in $this->extension most of the time...
 	}
 
 	/**
