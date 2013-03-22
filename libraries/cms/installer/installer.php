@@ -98,6 +98,14 @@ class JInstaller
 	public $extension_message = null;
 
 	/**
+	 * The extension name
+	 *
+	 * @var    string
+	 * @since  3.1
+	 */
+	public $name = null;
+
+	/**
 	 * The redirect URL if this extension (can be null if no redirect)
 	 *
 	 * @var    string
@@ -2367,6 +2375,9 @@ class JInstaller
 		{
 			throw new InvalidArgumentException(sprintf('The %s install adapter does not exist.', $adapter));
 		}
+
+		// Add the adapter type to the options array
+		$options['type'] = $adapter;
 
 		$this->adapter = new $class($this, $this->db, $options);
 	}

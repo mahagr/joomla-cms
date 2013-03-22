@@ -112,6 +112,14 @@ abstract class JInstallerAdapter
 	protected $scriptElement = null;
 
 	/**
+	 * The type of adapter in use
+	 *
+	 * @var    string
+	 * @since  3.1
+	 */
+	protected $type;
+
+	/**
 	 * Constructor
 	 *
 	 * @param   JInstaller       $parent   Parent object
@@ -269,8 +277,21 @@ abstract class JInstallerAdapter
 	 */
 	protected function checkExistingExtension()
 	{
-		// TODO: Prepare generic method
-		// BTW, if the extension exists, we should already have it in $this->extension most of the time...
+		try
+		{
+			$this->currentExtensionId = $this->extension->find(array('element' => $this->element, 'type' => $this->type));
+		}
+		catch (RuntimeException $e)
+		{
+			// Install failed, roll back changes
+			throw new RuntimeException(
+				JText::sprintf(
+					'JLIB_INSTALLER_ABORT_PLG_INSTALL_ROLLBACK',
+					JText::_('JLIB_INSTALLER_' . $this->route),
+					$e->getMessage()
+				)
+			);
+		}
 	}
 
 	/**
@@ -453,49 +474,6 @@ abstract class JInstallerAdapter
 	}
 
 	/**
-	 * Function used to check if extension is already installed
-	 *
-	 * @param   string  $extension  The element name of the extension to install
-	 * @param   string  $type       The type of extension being installed
-	 * @param   string  $clientId   The ID of the application
-	 *
-	 * @return  boolean  True if extension exists
-	 *
-	 * @since   3.1
-	 * @throws  RuntimeException
-	 */
-	protected function extensionExists($extension, $type, $clientId = null)
-	{
-		// Get a database connector object
-		$db = $this->parent->getDbo();
-
-		$query = $db->getQuery(true);
-		$query->select($query->qn('extension_id'))
-			->from($query->qn('#__extensions'))
-			->where($query->qn('type') . ' = ' . $query->q($type))
-			->where($query->qn('element') . ' = ' . $query->q($extension));
-
-		if (!is_null($clientId))
-		{
-			$query->where($query->qn('client_id') . ' = ' . (int) $clientId);
-		}
-		$db->setQuery($query);
-
-		try
-		{
-			$db->execute();
-		}
-		catch (RuntimeException $e)
-		{
-			throw new RuntimeException(JText::sprintf('JLIB_INSTALLER_ABORT_ROLLBACK', $e->getMessage()));
-		}
-		$id = (int) $db->loadResult();
-
-		// Return true if extension id > 0.
-		return $id > 0;
-	}
-
-	/**
 	 * Method to finalise the installation processing
 	 *
 	 * @return  void
@@ -607,6 +585,9 @@ abstract class JInstallerAdapter
 	{
 		// Support element names like 'en-GB'
 		$className = JFilterInput::getInstance()->clean($this->element, 'cmd') . 'InstallerScript';
+
+		// Cannot have - in class names
+		$className = str_replace('-', '', $className);
 
 		return $className;
 	}
