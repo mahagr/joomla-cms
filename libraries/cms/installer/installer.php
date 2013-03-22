@@ -494,15 +494,6 @@ class JInstaller
 
 		$type = (string) $this->manifest->attributes()->type;
 
-		try
-		{
-			$this->loadAdapter($type);
-		}
-		catch (InvalidArgumentException $e)
-		{
-			return false;
-		}
-
 		// Add the languages from the package itself
 		if (method_exists($this->adapter, 'loadLanguage'))
 		{
@@ -711,25 +702,20 @@ class JInstaller
 		if (!$path || !JFolder::exists($path))
 		{
 			$this->abort(JText::_('JLIB_INSTALLER_ABORT_NOUPDATEPATH'));
+
+			return false;
 		}
 
 		$this->setPath('source', $path);
 
 		if (!$this->setupInstall('update'))
 		{
-			return $this->abort(JText::_('JLIB_INSTALLER_ABORT_DETECTMANIFEST'));
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_DETECTMANIFEST'));
+
+			return false;
 		}
 
 		$type = (string) $this->manifest->attributes()->type;
-
-		try
-		{
-			$this->loadAdapter($type);
-		}
-		catch (InvalidArgumentException $e)
-		{
-			return false;
-		}
 
 		// Add the languages from the package itself
 		if (method_exists($this->adapter, 'loadLanguage'))
@@ -947,7 +933,6 @@ class JInstaller
 			{
 				return false;
 			}
-
 		}
 
 		return true;
