@@ -786,7 +786,7 @@ class JInstaller
 		{
 			try
 			{
-				$params = array('extension' => $this->extension, 'route' => 'uninstall', 'id' => $eid);
+				$params = array('extension' => $this->extension, 'route' => 'uninstall');
 				$this->loadAdapter($type, $params);
 			}
 			catch (InvalidArgumentException $e)
@@ -806,6 +806,7 @@ class JInstaller
 		$errorMsg = '';
 		try
 		{
+			// @deprecated Parameter is given just for backwards compatibility.
 			$result = (bool) $this->adapter->uninstall($eid);
 		}
 		catch (Exception $e)

@@ -355,16 +355,14 @@ class JInstallerAdapterLanguage extends JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// Run the common parent methods
-		if (parent::setupUninstall($id))
+		if (parent::setupUninstall())
 		{
 			// Grab a copy of the client details
 			$client = JApplicationHelper::getClientInfo($this->extension->client_id);
@@ -402,16 +400,16 @@ class JInstallerAdapterLanguage extends JInstallerAdapter
 	/**
 	 * Custom uninstall method
 	 *
-	 * @param   string  $eid  The tag of the language to uninstall
-	 *
 	 * @return  mixed  Return value for uninstall method in component uninstall file
 	 *
 	 * @since   3.1
 	 */
-	public function uninstall($eid)
+	public function uninstall()
 	{
 		// Prepare the uninstaller for action
-		$this->setupUninstall((int) $eid);
+		if (!$this->setupUninstall()) {
+			return false;
+		}
 
 		// Get the source path as set in the setup method
 		$path = $this->parent->getPath('source');

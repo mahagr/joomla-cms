@@ -255,17 +255,15 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @note    Due to non-standard processing, the manifest is also set in this extended method
 	 * @since   3.1
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// Run the common parent methods
-		if (parent::setupUninstall($id))
+		if (parent::setupUninstall())
 		{
 			$this->manifestFile = JPATH_MANIFESTS . '/packages/' . $this->extension->element . '.xml';
 
@@ -311,18 +309,18 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	/**
 	 * Custom uninstall method
 	 *
-	 * @param   integer  $id  The id of the package to uninstall.
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	public function uninstall($id)
+	public function uninstall()
 	{
-		$retval = true;
-
 		// Prepare the uninstaller for action
-		$this->setupUninstall((int) $id);
+		if (!$this->setupUninstall()) {
+			return false;
+		}
+
+		$retval = true;
 
 		$this->setupScriptfile();
 		$this->triggerManifestScript('uninstall');

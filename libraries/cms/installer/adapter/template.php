@@ -175,16 +175,14 @@ class JInstallerAdapterTemplate extends JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// Run the common parent methods
-		if (parent::setupUninstall($id))
+		if (parent::setupUninstall())
 		{
 			// For a template the id will be the template name which represents the subfolder of the templates folder that the template resides in.
 			if (!$this->element)
@@ -230,16 +228,16 @@ class JInstallerAdapterTemplate extends JInstallerAdapter
 	/**
 	 * Custom uninstall method
 	 *
-	 * @param   integer  $id  The extension ID
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	public function uninstall($id)
+	public function uninstall()
 	{
 		// Prepare the uninstaller for action
-		$this->setupUninstall((int) $id);
+		if (!$this->setupUninstall()) {
+			return false;
+		}
 
 		// We do findManifest to avoid problem when uninstalling a list of extensions: getManifest cache its manifest file
 		$this->parent->findManifest();

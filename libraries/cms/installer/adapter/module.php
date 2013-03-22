@@ -374,16 +374,14 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// Run the common parent methods
-		if (parent::setupUninstall($id))
+		if (parent::setupUninstall())
 		{
 			$client = JApplicationHelper::getClientInfo($this->extension->client_id);
 
@@ -496,18 +494,18 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	/**
 	 * Custom uninstall method
 	 *
-	 * @param   integer  $id  The id of the module to uninstall
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	public function uninstall($id)
+	public function uninstall()
 	{
-		$retval = true;
-
 		// Prepare the uninstaller for action
-		$this->setupUninstall((int) $id);
+		if (!$this->setupUninstall()) {
+			return false;
+		}
+
+		$retval = true;
 
 		// Get the module's manifest objecct
 		// We do findManifest to avoid problem when uninstalling a list of extensions: getManifest cache its manifest file.

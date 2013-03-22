@@ -755,16 +755,14 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// Run the common parent methods
-		if (parent::setupUninstall($id))
+		if (parent::setupUninstall())
 		{
 			// Get the admin and site paths for the component
 			$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->element));
@@ -781,14 +779,17 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	/**
 	 * Custom uninstall method for components
 	 *
-	 * @param   integer  $id  The unique extension id of the component to uninstall
-	 *
 	 * @return  mixed  Return value for uninstall method in component uninstall file
 	 *
 	 * @since   3.1
 	 */
-	public function uninstall($id)
+	public function uninstall()
 	{
+		// Prepare the uninstaller for action
+		if (!$this->setupUninstall()) {
+			return false;
+		}
+
 		$retval = true;
 
 		/**
@@ -865,7 +866,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 
 		// Remove the schema version
 		$query = $this->db->getQuery(true);
-		$query->delete()->from('#__schemas')->where('extension_id = ' . $id);
+		$query->delete()->from('#__schemas')->where('extension_id = ' . $this->extension->extension_id);
 		$this->db->setQuery($query);
 		$this->db->execute();
 

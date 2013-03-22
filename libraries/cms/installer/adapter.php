@@ -145,14 +145,11 @@ abstract class JInstallerAdapter
 			}
 		}
 
-		// If we're on the uninstall route, we need to prepare the adapter before loading the manifest
-		if ($this->route == 'uninstall' && isset($options['id']))
+		// Find the manifest if not given as a configuration option
+		if (!$this->manifest)
 		{
-			$this->setupUninstall((int) $options['id']);
+			$this->manifest = $this->findManifest();
 		}
-
-		// Set the manifest object
-		$this->manifest = $this->getManifest();
 
 		// Set name and element
 		// TODO: remove and use internally $this->extension instead.
@@ -266,6 +263,16 @@ abstract class JInstallerAdapter
 				return isset($this->$name) ? $this->$name : null;
 		}
 		return null;
+	}
+
+	/**
+	 * Load extension by element name.
+	 *
+	 * @param string $element
+	 */
+	protected function loadExtension($element)
+	{
+		$this->extension->load(array('element' => $element, 'type' => $this->type));
 	}
 
 	/**
@@ -515,19 +522,36 @@ abstract class JInstallerAdapter
 	}
 
 	/**
-	 * Get the manifest object.
+	 * Find the manifest file and return it as an object.
 	 *
 	 * @return  object  Manifest object
 	 *
 	 * @since   3.1
 	 */
+	public function findManifest()
+	{
+		// We are trying to find manifest for the installed extension.
+		// TODO: handle locally in every adapter (see uninstall to get some hints).
+		// TODO: do we also need the path to the file?
+		$manifest = $this->parent->getManifest();
+
+		return $manifest;
+	}
+
+	/**
+	 * Get the manifest object.
+	 *
+	 * @return  object  Manifest object
+	 *
+	 * @since   3.1
+	 * @deprecated
+	 * @todo Check if this function exists in the original code..
+	 */
 	public function getManifest()
 	{
 		if (!$this->manifest)
 		{
-			// We are trying to find manifest for the installed extension.
-			// TODO: handle locally in every adapter (see uninstall to get some hints).
-			$this->manifest = $this->parent->getManifest();
+			$this->manifest = $this->findManifest();
 		}
 
 		return $this->manifest;
@@ -858,18 +882,16 @@ abstract class JInstallerAdapter
 	 * This method populates the $this->extension object, checks whether the extension is protected,
 	 * and sets the extension paths
 	 *
-	 * @param   integer  $id  The extension ID to load
-	 *
 	 * @return  boolean  True on success
 	 *
 	 * @since   3.1
 	 * @todo    Cleanup the JText strings
 	 */
-	protected function setupUninstall($id)
+	protected function setupUninstall()
 	{
 		// First order of business will be to load the component object table from the database.
 		// This should give us the necessary information to proceed.
-		if (!$this->extension->load((int) $id))
+		if (!$this->extension->extension_id)
 		{
 			JLog::add(JText::_('JLIB_INSTALLER_ERROR_COMP_UNINSTALL_ERRORUNKOWNEXTENSION'), JLog::WARNING, 'jerror');
 
@@ -884,9 +906,6 @@ abstract class JInstallerAdapter
 
 			return false;
 		}
-
-		// Make sure that element name is in correct format.
-		$this->element = $this->getElement($this->extension->element);
 
 		return true;
 	}
