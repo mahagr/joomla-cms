@@ -458,7 +458,7 @@ class JInstallerAdapterTemplate extends JInstallerAdapter
 			);
 
 			$values = array(
-				$this->db->Quote($this->extension->element), $clientId, $this->db->Quote(0),
+				$this->db->Quote($this->extension->element), $this->extension->client_id, $this->db->Quote(0),
 				$this->db->Quote(JText::sprintf('JLIB_INSTALLER_DEFAULT_STYLE', JText::_($this->name))),
 				$this->db->Quote($this->extension->params) );
 
