@@ -182,6 +182,29 @@ class JInstaller
 	}
 
 	/**
+	 * Get database driver type.
+	 *
+	 * @param   string  $name  Name of the database driver
+	 *
+	 * @return  string Driver name
+	 */
+	public function getDbDriver($name = null)
+	{
+		$dbDriver = strtolower($name === null ? $this->db->name : $name);
+
+		if ($dbDriver == 'mysqli')
+		{
+			$dbDriver = 'mysql';
+		}
+		elseif ($dbDriver == 'sqlazure')
+		{
+			$dbDriver = 'sqlsrv';
+		}
+
+		return $dbDriver;
+	}
+
+	/**
 	 * Returns the global Installer object, only creating it
 	 * if it doesn't already exist.
 	 *
@@ -389,14 +412,13 @@ class JInstaller
 
 				case 'extension':
 					// Get database connector object
-					$db = $this->getDbo();
-					$query = $db->getQuery(true);
+					$query = $this->db->getQuery(true);
 
 					// Remove the entry from the #__extensions table
-					$query->delete($db->quoteName('#__extensions'));
-					$query->where($db->quoteName('extension_id') . ' = ' . (int) $step['id']);
-					$db->setQuery($query);
-					$stepval = $db->execute();
+					$query->delete($this->db->quoteName('#__extensions'));
+					$query->where($this->db->quoteName('extension_id') . ' = ' . (int) $step['id']);
+					$this->db->setQuery($query);
+					$stepval = $this->db->execute();
 
 					break;
 
@@ -454,16 +476,14 @@ class JInstaller
 	 */
 	public function install($path = null)
 	{
-		if ($path && JFolder::exists($path))
-		{
-			$this->setPath('source', $path);
-		}
-		else
+		if (!$path || !JFolder::exists($path))
 		{
 			$this->abort(JText::_('JLIB_INSTALLER_ABORT_NOINSTALLPATH'));
 
 			return false;
 		}
+
+		$this->setPath('source', $path);
 
 		if (!$this->setupInstall())
 		{
@@ -544,107 +564,103 @@ class JInstaller
 	 */
 	public function discover_install($eid = null)
 	{
-		if ($eid)
-		{
-			$this->extension = JTable::getInstance('extension');
-
-			if (!$this->extension->load($eid))
-			{
-				$this->abort(JText::_('JLIB_INSTALLER_ABORT_LOAD_DETAILS'));
-
-				return false;
-			}
-
-			if ($this->extension->state != -1)
-			{
-				$this->abort(JText::_('JLIB_INSTALLER_ABORT_ALREADYINSTALLED'));
-
-				return false;
-			}
-
-			$type = $this->extension->type;
-
-			// Load the adapter
-			$class = 'JInstallerAdapter' . ucfirst($type);
-
-			if (!($this->adapter instanceof $class))
-			{
-				try
-				{
-					$params = array('extension' => $this->extension, 'route' => 'discover_install');
-					$this->loadAdapter($type, $params);
-				}
-				catch (InvalidArgumentException $e)
-				{
-					return false;
-				}
-
-			}
-
-			if (method_exists($this->adapter, 'discover_install'))
-			{
-				// Add the languages from the package itself
-				if (method_exists($this->adapter, 'loadLanguage'))
-				{
-					$this->adapter->loadLanguage();
-				}
-
-				// Fire the onExtensionBeforeInstall event.
-				JPluginHelper::importPlugin('extension');
-				$dispatcher = JEventDispatcher::getInstance();
-				$dispatcher->trigger(
-					'onExtensionBeforeInstall',
-					array(
-						'method' => 'discover_install',
-						'type' => $type,
-						'manifest' => null,
-						'extension' => $this->extension->extension_id
-					)
-				);
-
-				// Run the discover install.
-				$errorMsg = '';
-
-				try
-				{
-					$eid = (int) $this->adapter->discover_install();
-				}
-				catch (Exception $e)
-				{
-					$errorMsg = $e->getMessage();
-				}
-
-				if (!$eid)
-				{
-					$eid = false;
-					$this->abort($errorMsg, $type);
-				}
-
-				// Fire the onExtensionAfterInstall
-				$dispatcher->trigger(
-					'onExtensionAfterInstall',
-					array(
-						'installer' => clone $this,
-						'eid' => $eid
-					)
-				);
-
-				// Return true if extension id > 0.
-				return $eid > 0;
-			}
-			else
-			{
-				$this->abort(JText::_('JLIB_INSTALLER_ABORT_METHODNOTSUPPORTED'));
-
-				return false;
-			}
-		}
-		else
+		if (!$eid)
 		{
 			$this->abort(JText::_('JLIB_INSTALLER_ABORT_EXTENSIONNOTVALID'));
 
 			return false;
 		}
+
+		$this->extension = JTable::getInstance('extension');
+
+		if (!$this->extension->load($eid))
+		{
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_LOAD_DETAILS'));
+
+			return false;
+		}
+
+		if ($this->extension->state != -1)
+		{
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_ALREADYINSTALLED'));
+
+			return false;
+		}
+
+		$type = $this->extension->type;
+
+		// Load the adapter
+		$class = 'JInstallerAdapter' . ucfirst($type);
+
+		if (!($this->adapter instanceof $class))
+		{
+			try
+			{
+				$params = array('extension' => $this->extension, 'route' => 'discover_install');
+				$this->loadAdapter($type, $params);
+			}
+			catch (InvalidArgumentException $e)
+			{
+				return false;
+			}
+
+		}
+
+		if (!method_exists($this->adapter, 'discover_install'))
+		{
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_METHODNOTSUPPORTED'));
+
+			return false;
+		}
+
+		// Add the languages from the package itself
+		if (method_exists($this->adapter, 'loadLanguage'))
+		{
+			$this->adapter->loadLanguage();
+		}
+
+		// Fire the onExtensionBeforeInstall event.
+		JPluginHelper::importPlugin('extension');
+		$dispatcher = JEventDispatcher::getInstance();
+		$dispatcher->trigger(
+			'onExtensionBeforeInstall',
+			array(
+				'method' => 'discover_install',
+				'type' => $type,
+				'manifest' => null,
+				'extension' => $this->extension->extension_id
+			)
+		);
+
+		// Run the discover install.
+		$errorMsg = '';
+
+		try
+		{
+			$eid = (int) $this->adapter->discover_install();
+		}
+		catch (Exception $e)
+		{
+			$errorMsg = $e->getMessage();
+		}
+
+		if (!$eid)
+		{
+			$eid = false;
+			$this->abort($errorMsg, $type);
+		}
+
+		// Fire the onExtensionAfterInstall
+		$dispatcher->trigger(
+			'onExtensionAfterInstall',
+			array(
+				'installer' => clone $this,
+				'eid' => $eid
+			)
+		);
+
+		// Return true if extension id > 0.
+		return $eid > 0;
 	}
 
 	/**
@@ -670,7 +686,7 @@ class JInstaller
 				$tmp = $instance->discover();
 
 				// If its an array and has entries
-				if (is_array($tmp) && count($tmp))
+				if (is_array($tmp) && count($tmp) > 0)
 				{
 					// Merge it into the system
 					$results = array_merge($results, $tmp);
@@ -692,14 +708,12 @@ class JInstaller
 	 */
 	public function update($path = null)
 	{
-		if ($path && JFolder::exists($path))
-		{
-			$this->setPath('source', $path);
-		}
-		else
+		if (!$path || !JFolder::exists($path))
 		{
 			$this->abort(JText::_('JLIB_INSTALLER_ABORT_NOUPDATEPATH'));
 		}
+
+		$this->setPath('source', $path);
 
 		if (!$this->setupInstall('update'))
 		{
@@ -736,6 +750,7 @@ class JInstaller
 
 		// Run the update.
 		$errorMsg = '';
+
 		try
 		{
 			$eid = (int) $this->adapter->update();
@@ -840,70 +855,59 @@ class JInstaller
 	 */
 	public function refreshManifestCache($eid)
 	{
-		if ($eid)
-		{
-			$this->extension = JTable::getInstance('extension');
-
-			if (!$this->extension->load($eid))
-			{
-				$this->abort(JText::_('JLIB_INSTALLER_ABORT_LOAD_DETAILS'));
-
-				return false;
-			}
-
-			if ($this->extension->state == -1)
-			{
-				$this->abort(JText::_('JLIB_INSTALLER_ABORT_REFRESH_MANIFEST_CACHE'));
-
-				return false;
-			}
-
-			// Set the adapter type
-			$type = $this->extension->type;
-
-			// Load the adapter
-			$class = 'JInstallerAdapter' . ucfirst($type);
-
-			if (!($this->adapter instanceof $class))
-			{
-				try
-				{
-					$params = array('extension' => $this->extension);
-					$this->loadAdapter($type, $params);
-				}
-				catch (InvalidArgumentException $e)
-				{
-					return false;
-				}
-
-			}
-
-			if (method_exists($this->adapter, 'refreshManifestCache'))
-			{
-				$result = $this->adapter->refreshManifestCache();
-
-				if ($result !== false)
-				{
-					return true;
-				}
-				else
-				{
-					return false;
-				}
-			}
-			else
-			{
-				$this->abort(JText::sprintf('JLIB_INSTALLER_ABORT_METHODNOTSUPPORTED_TYPE', $type));
-
-				return false;
-			}
-		}
-		else
+		if (!$eid)
 		{
 			$this->abort(JText::_('JLIB_INSTALLER_ABORT_REFRESH_MANIFEST_CACHE_VALID'));
 
 			return false;
 		}
+
+		$this->extension = JTable::getInstance('extension');
+
+		if (!$this->extension->load($eid))
+		{
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_LOAD_DETAILS'));
+
+			return false;
+		}
+
+		if ($this->extension->state == -1)
+		{
+			$this->abort(JText::_('JLIB_INSTALLER_ABORT_REFRESH_MANIFEST_CACHE'));
+
+			return false;
+		}
+
+		// Set the adapter type
+		$type = $this->extension->type;
+
+		// Load the adapter
+		$class = 'JInstallerAdapter' . ucfirst($type);
+
+		if (!($this->adapter instanceof $class))
+		{
+			try
+			{
+				$params = array('extension' => $this->extension);
+				$this->loadAdapter($type, $params);
+			}
+			catch (InvalidArgumentException $e)
+			{
+				return false;
+			}
+
+		}
+
+		if (!method_exists($this->adapter, 'refreshManifestCache'))
+		{
+			$this->abort(JText::sprintf('JLIB_INSTALLER_ABORT_METHODNOTSUPPORTED_TYPE', $type));
+
+			return false;
+		}
+
+		$result = $this->adapter->refreshManifestCache();
+
+		return $result !== false;
 	}
 
 	// Utility functions
@@ -961,10 +965,7 @@ class JInstaller
 	 */
 	public function parseQueries(SimpleXMLElement $element)
 	{
-		// Get the database connector object
-		$db = $this->getDbo();
-
-		if (!$element || !count($element->children()))
+		if (count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;
@@ -982,11 +983,11 @@ class JInstaller
 		// Process each query in the $queries array (children of $tagName).
 		foreach ($queries as $query)
 		{
-			$db->setQuery($query->data());
+			$this->db->setQuery($query->data());
 
-			if (!$db->execute())
+			if (!$this->db->execute())
 			{
-				JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $db->stderr(true)), JLog::WARNING, 'jerror');
+				JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $this->db->stderr(true)), JLog::WARNING, 'jerror');
 
 				return false;
 			}
@@ -1006,40 +1007,22 @@ class JInstaller
 	 */
 	public function parseSQLFiles($element)
 	{
-		if (!$element || !count($element->children()))
+		if (!$element || count($element->children()) == 0)
 		{
 			// The tag does not exist.
 			return 0;
 		}
 
+		$dbDriver = $this->getDbDriver();
 		$queries = array();
-		$db = $this->getDbo();
-		$dbDriver = strtolower($db->name);
-
-		if ($dbDriver == 'mysqli')
-		{
-			$dbDriver = 'mysql';
-		}
-		elseif ($dbDriver == 'sqlazure')
-		{
-			$dbDriver = 'sqlsrv';
-		}
 
 		// Get the name of the sql file to process
 		foreach ($element->children() as $file)
 		{
 			$fCharset = (strtolower($file->attributes()->charset) == 'utf8') ? 'utf8' : '';
-			$fDriver = strtolower($file->attributes()->driver);
+			$fDriver = $this->getDbDriver($file->attributes()->driver);
 
-			if ($fDriver == 'mysqli')
-			{
-				$fDriver = 'mysql';
-			}
-			elseif ($fDriver == 'sqlazure')
-			{
-				$fDriver = 'sqlsrv';
-			}
-
+			// TODO: What's the point of having charset support if SQL only works for UTF8?
 			if ($fCharset == 'utf8' && $fDriver == $dbDriver)
 			{
 				$sqlfile = $this->getPath('extension_root') . '/' . $file;
@@ -1047,7 +1030,7 @@ class JInstaller
 				// Check that sql files exists before reading. Otherwise raise error for rollback
 				if (!file_exists($sqlfile))
 				{
-					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $db->stderr(true)), JLog::WARNING, 'jerror');
+					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $this->db->stderr(true)), JLog::WARNING, 'jerror');
 
 					return false;
 				}
@@ -1078,11 +1061,11 @@ class JInstaller
 
 					if ($query != '' && $query{0} != '#')
 					{
-						$db->setQuery($query);
+						$this->db->setQuery($query);
 
-						if (!$db->execute())
+						if (!$this->db->execute())
 						{
-							JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $db->stderr(true)), JLog::WARNING, 'jerror');
+							JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $this->db->stderr(true)), JLog::WARNING, 'jerror');
 
 							return false;
 						}
@@ -1106,65 +1089,56 @@ class JInstaller
 	 */
 	public function setSchemaVersion(SimpleXMLElement $schema, $eid)
 	{
-		if ($eid && $schema)
+		if (!$eid)
 		{
-			$db = $this->getDbo();
-			$schemapaths = $schema->children();
+			return;
+		}
 
-			if (!$schemapaths)
+		$schemapaths = $schema->children();
+
+		if (count($schemapaths) == 0)
+		{
+			return;
+		}
+
+		$dbDriver = $this->getDbDriver();
+
+		$schemapath = '';
+
+		foreach ($schemapaths as $entry)
+		{
+			$attrs = $entry->attributes();
+
+			if ($attrs['type'] == $dbDriver)
 			{
-				return;
+				$schemapath = $entry;
+				break;
 			}
+		}
 
-			if (count($schemapaths))
-			{
-				$dbDriver = strtolower($db->name);
+		if (!strlen($schemapath))
+		{
+			return;
+		}
 
-				if ($dbDriver == 'mysqli')
-				{
-					$dbDriver = 'mysql';
-				}
-				elseif ($dbDriver == 'sqlazure')
-				{
-					$dbDriver = 'sqlsrv';
-				}
+		$files = str_replace('.sql', '', JFolder::files($this->getPath('extension_root') . '/' . $schemapath, '\.sql$'));
+		usort($files, 'version_compare');
 
-				$schemapath = '';
+		// Update the database
+		$query = $this->db->getQuery(true);
+		$query->delete()
+			->from('#__schemas')
+			->where('extension_id = ' . $eid);
+		$this->db->setQuery($query);
 
-				foreach ($schemapaths as $entry)
-				{
-					$attrs = $entry->attributes();
-
-					if ($attrs['type'] == $dbDriver)
-					{
-						$schemapath = $entry;
-						break;
-					}
-				}
-
-				if (strlen($schemapath))
-				{
-					$files = str_replace('.sql', '', JFolder::files($this->getPath('extension_root') . '/' . $schemapath, '\.sql$'));
-					usort($files, 'version_compare');
-
-					// Update the database
-					$query = $db->getQuery(true);
-					$query->delete()
-						->from('#__schemas')
-						->where('extension_id = ' . $eid);
-					$db->setQuery($query);
-
-					if ($db->execute())
-					{
-						$query->clear();
-						$query->insert($db->quoteName('#__schemas'));
-						$query->columns(array($db->quoteName('extension_id'), $db->quoteName('version_id')));
-						$query->values($eid . ', ' . $db->quote(end($files)));
-						$db->setQuery($query);
-						$db->execute();
-					}
-				}
-			}
+		if ($this->db->execute())
+		{
+			$query->clear();
+			$query->insert($this->db->quoteName('#__schemas'));
+			$query->columns(array($this->db->quoteName('extension_id'), $this->db->quoteName('version_id')));
+			$query->values($eid . ', ' . $this->db->quote(end($files)));
+			$this->db->setQuery($query);
+			$this->db->execute();
 		}
 	}
 
@@ -1174,130 +1148,129 @@ class JInstaller
 	 * @param   SimpleXMLElement  $schema  The XML node to process
 	 * @param   integer           $eid     Extension Identifier
 	 *
-	 * @return  boolean           Result of the operations
+	 * @return  mixed             Number of queries run or false on failure.
 	 *
 	 * @since   3.1
 	 */
 	public function parseSchemaUpdates(SimpleXMLElement $schema, $eid)
 	{
+		// Ensure we have an XML element and a valid extension id
+		if (!$eid)
+		{
+			return 0;
+		}
+
+		$schemapaths = $schema->children();
+
+		if (count($schemapaths) == 0)
+		{
+			return 0;
+		}
+
+		$dbDriver = $this->getDbDriver();
+
+		$schemapath = '';
+
+		foreach ($schemapaths as $entry)
+		{
+			$attrs = $entry->attributes();
+
+			if ($attrs['type'] == $dbDriver)
+			{
+				$schemapath = $entry;
+				break;
+			}
+		}
+
+		if (!strlen($schemapath))
+		{
+			return 0;
+		}
+
+		$files = str_replace('.sql', '', JFolder::files($this->getPath('extension_root') . '/' . $schemapath, '\.sql$'));
+		usort($files, 'version_compare');
+
+		if (empty($files))
+		{
+			return false;
+		}
+
+		$query = $this->db->getQuery(true);
+		$query->select('version_id')
+			->from('#__schemas')
+			->where('extension_id = ' . $eid);
+		$this->db->setQuery($query);
+		$version = $this->db->loadResult();
+
 		$update_count = 0;
 
-		// Ensure we have an XML element and a valid extension id
-		if ($eid && $schema)
+		if ($version)
 		{
-			$db = $this->getDbo();
-			$schemapaths = $schema->children();
-
-			if (count($schemapaths))
+			// We have a version!
+			foreach ($files as $file)
 			{
-				$dbDriver = strtolower($db->name);
-
-				if ($dbDriver == 'mysqli')
+				if (version_compare($file, $version) < 0)
 				{
-					$dbDriver = 'mysql';
-				}
-				elseif ($dbDriver == 'sqlazure')
-				{
-					$dbDriver = 'sqlsrv';
+					// Already updated to this version.
+					continue;
 				}
 
-				$schemapath = '';
+				$buffer = file_get_contents($this->getPath('extension_root') . '/' . $schemapath . '/' . $file . '.sql');
 
-				foreach ($schemapaths as $entry)
+				// Graceful exit and rollback if read not successful
+				if ($buffer === false)
 				{
-					$attrs = $entry->attributes();
+					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_READBUFFER'), JLog::WARNING, 'jerror');
 
-					if ($attrs['type'] == $dbDriver)
-					{
-						$schemapath = $entry;
-						break;
-					}
+					return false;
 				}
 
-				if (strlen($schemapath))
+				// Create an array of queries from the sql file
+				$queries = JDatabaseDriver::splitSql($buffer);
+
+				if (count($queries) == 0)
 				{
-					$files = str_replace('.sql', '', JFolder::files($this->getPath('extension_root') . '/' . $schemapath, '\.sql$'));
-					usort($files, 'version_compare');
+					// No queries to process
+					continue;
+				}
 
-					if (!count($files))
+				// Process each query in the $queries array (split out of sql file).
+				foreach ($queries as $query)
+				{
+					$query = trim($query);
+
+					if ($query != '' && $query{0} != '#')
 					{
-						return false;
-					}
+						$this->db->setQuery($query);
 
-					$query = $db->getQuery(true);
-					$query->select('version_id')
-						->from('#__schemas')
-						->where('extension_id = ' . $eid);
-					$db->setQuery($query);
-					$version = $db->loadResult();
-
-					if ($version)
-					{
-						// We have a version!
-						foreach ($files as $file)
+						if (!$this->db->execute())
 						{
-							if (version_compare($file, $version) > 0)
-							{
-								$buffer = file_get_contents($this->getPath('extension_root') . '/' . $schemapath . '/' . $file . '.sql');
+							JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $this->db->stderr(true)), JLog::WARNING, 'jerror');
 
-								// Graceful exit and rollback if read not successful
-								if ($buffer === false)
-								{
-									JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_READBUFFER'), JLog::WARNING, 'jerror');
-
-									return false;
-								}
-
-								// Create an array of queries from the sql file
-								$queries = JDatabaseDriver::splitSql($buffer);
-
-								if (count($queries) == 0)
-								{
-									// No queries to process
-									continue;
-								}
-
-								// Process each query in the $queries array (split out of sql file).
-								foreach ($queries as $query)
-								{
-									$query = trim($query);
-
-									if ($query != '' && $query{0} != '#')
-									{
-										$db->setQuery($query);
-
-										if (!$db->execute())
-										{
-											JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_SQL_ERROR', $db->stderr(true)), JLog::WARNING, 'jerror');
-
-											return false;
-										}
-
-										$update_count++;
-									}
-								}
-							}
+							return false;
 						}
-					}
 
-					// Update the database
-					$query = $db->getQuery(true);
-					$query->delete()
-						->from('#__schemas')
-						->where('extension_id = ' . $eid);
-					$db->setQuery($query);
-
-					if ($db->execute())
-					{
-						$query->clear();
-						$query->insert($db->quoteName('#__schemas'));
-						$query->columns(array($db->quoteName('extension_id'), $db->quoteName('version_id')));
-						$query->values($eid . ', ' . $db->quote(end($files)));
-						$db->setQuery($query);
-						$db->execute();
+						$update_count++;
 					}
 				}
 			}
+		}
+
+		// Update the database
+		$query = $this->db->getQuery(true);
+		$query->delete()
+			->from('#__schemas')
+			->where('extension_id = ' . $eid);
+		$this->db->setQuery($query);
+
+		if ($this->db->execute())
+		{
+			$query->clear();
+			$query->insert($this->db->quoteName('#__schemas'));
+			$query->columns(array($this->db->quoteName('extension_id'), $this->db->quoteName('version_id')));
+			$query->values($eid . ', ' . $this->db->quote(end($files)));
+			$this->db->setQuery($query);
+			$this->db->execute();
 		}
 
 		return $update_count;
@@ -1318,7 +1291,7 @@ class JInstaller
 	public function parseFiles(SimpleXMLElement $element, $cid = 0, $oldFiles = null)
 	{
 		// Get the array of file nodes to process; we checked whether this had children above.
-		if (!$element || !count($element->children()))
+		if (count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children (hence no files to process) therefore we return zero files processed.
 			return 0;
@@ -1362,11 +1335,11 @@ class JInstaller
 		}
 
 		// Work out what files have been deleted
-		if ($oldFiles && ($oldFiles instanceof SimpleXMLElement))
+		if ($oldFiles)
 		{
 			$oldEntries = $oldFiles->children();
 
-			if (count($oldEntries))
+			if (count($oldEntries) > 0)
 			{
 				$deletions = $this->findDeletedFiles($oldEntries, $element->children());
 
@@ -1441,7 +1414,7 @@ class JInstaller
 	public function parseLanguages(SimpleXMLElement $element, $cid = 0)
 	{
 		// TODO: work out why the below line triggers 'node no longer exists' errors with files
-		if (!$element || !count($element->children()))
+		if (count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;
@@ -1553,7 +1526,7 @@ class JInstaller
 	 */
 	public function parseMedia(SimpleXMLElement $element)
 	{
-		if (!$element || !count($element->children()))
+		if (count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;
@@ -1646,7 +1619,7 @@ class JInstaller
 		// Iterating through the fieldsets:
 		foreach ($fieldsets as $fieldset)
 		{
-			if (!count($fieldset->children()))
+			if (count($fieldset->children()) == 0)
 			{
 				// Either the tag does not exist or has no children therefore we return zero files processed.
 				return null;
@@ -1686,6 +1659,16 @@ class JInstaller
 	public function copyFiles($files, $overwrite = null)
 	{
 		/*
+		 * $files must be an array of filenames.  Verify that it is an array with
+		 * at least one file to copy.
+		 */
+		if (!is_array($files) || empty($files))
+		{
+			// The $files variable was either not an array or an empty array
+			return false;
+		}
+
+		/*
 		 * To allow for manual override on the overwriting flag, we check to see if
 		 * the $overwrite flag was set and is a boolean value.  If not, use the object
 		 * allowOverwrite flag.
@@ -1695,81 +1678,70 @@ class JInstaller
 			$overwrite = $this->overwrite;
 		}
 
-		/*
-		 * $files must be an array of filenames.  Verify that it is an array with
-		 * at least one file to copy.
-		 */
-		if (is_array($files) && count($files) > 0)
+		foreach ($files as $file)
 		{
-			foreach ($files as $file)
+			// Get the source and destination paths
+			$filesource = JPath::clean($file['src']);
+			$filedest = JPath::clean($file['dest']);
+			$filetype = array_key_exists('type', $file) ? $file['type'] : 'file';
+
+			if (!file_exists($filesource))
 			{
-				// Get the source and destination paths
-				$filesource = JPath::clean($file['src']);
-				$filedest = JPath::clean($file['dest']);
-				$filetype = array_key_exists('type', $file) ? $file['type'] : 'file';
+				// The source file does not exist.  Nothing to copy so set an error and return false.
+				JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_NO_FILE', $filesource), JLog::WARNING, 'jerror');
 
-				if (!file_exists($filesource))
-				{
-					// The source file does not exist.  Nothing to copy so set an error and return false.
-					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_NO_FILE', $filesource), JLog::WARNING, 'jerror');
-
-					return false;
-				}
-				elseif (($exists = file_exists($filedest)) && !$overwrite)
-				{
-					// It's okay if the manifest already exists
-					if ($this->getPath('manifest') == $filesource)
-					{
-						continue;
-					}
-
-					// The destination file already exists and the overwrite flag is false.
-					// Set an error and return false.
-					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FILE_EXISTS', $filedest), JLog::WARNING, 'jerror');
-
-					return false;
-				}
-				else
-				{
-					// Copy the folder or file to the new location.
-					if ($filetype == 'folder')
-					{
-						if (!(JFolder::copy($filesource, $filedest, null, $overwrite)))
-						{
-							JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FAIL_COPY_FOLDER', $filesource, $filedest), JLog::WARNING, 'jerror');
-
-							return false;
-						}
-
-						$step = array('type' => 'folder', 'path' => $filedest);
-					}
-					else
-					{
-						if (!(JFile::copy($filesource, $filedest, null)))
-						{
-							JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FAIL_COPY_FILE', $filesource, $filedest), JLog::WARNING, 'jerror');
-
-							return false;
-						}
-
-						$step = array('type' => 'file', 'path' => $filedest);
-					}
-
-					/*
-					 * Since we copied a file/folder, we want to add it to the installation step stack so that
-					 * in case we have to roll back the installation we can remove the files copied.
-					 */
-					if (!$exists)
-					{
-						$this->stepStack[] = $step;
-					}
-				}
+				return false;
 			}
-		}
-		else
-		{
-			// The $files variable was either not an array or an empty array
-			return false;
+
+			$exists = file_exists($filedest);
+
+			if ($exists && !$overwrite)
+			{
+				// It's okay if the manifest already exists
+				if ($this->getPath('manifest') == $filesource)
+				{
+					continue;
+				}
+
+				// The destination file already exists and the overwrite flag is false.
+				// Set an error and return false.
+				JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FILE_EXISTS', $filedest), JLog::WARNING, 'jerror');
+
+				return false;
+			}
+
+			// Copy the folder or file to the new location.
+			if ($filetype == 'folder')
+			{
+				if (!(JFolder::copy($filesource, $filedest, null, $overwrite)))
+				{
+					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FAIL_COPY_FOLDER', $filesource, $filedest), JLog::WARNING, 'jerror');
+
+					return false;
+				}
+
+				$step = array('type' => 'folder', 'path' => $filedest);
+			}
+			else
+			{
+				if (!(JFile::copy($filesource, $filedest, null)))
+				{
+					JLog::add(JText::sprintf('JLIB_INSTALLER_ERROR_FAIL_COPY_FILE', $filesource, $filedest), JLog::WARNING, 'jerror');
+
+					return false;
+				}
+
+				$step = array('type' => 'file', 'path' => $filedest);
+			}
+
+			/*
+			 * Since we copied a file/folder, we want to add it to the installation step stack so that
+			 * in case we have to roll back the installation we can remove the files copied.
+			 */
+			if (!$exists)
+			{
+				$this->stepStack[] = $step;
+			}
 		}
 
 		return count($files);
@@ -1788,7 +1760,7 @@ class JInstaller
 	 */
 	public function removeFiles($element, $cid = 0)
 	{
-		if (!$element || !count($element->children()))
+		if (!$element || count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return true;
@@ -1974,52 +1946,49 @@ class JInstaller
 		// Get an array of all the XML files from the installation directory
 		$xmlfiles = JFolder::files($this->getPath('source'), '.xml$', 1, true);
 
-		// If at least one XML file exists
-		if (!empty($xmlfiles))
-		{
-			foreach ($xmlfiles as $file)
-			{
-				// Is it a valid Joomla installation manifest file?
-				$manifest = $this->isManifest($file);
-
-				if (!is_null($manifest))
-				{
-					// If the root method attribute is set to upgrade, allow file overwrite
-					if ((string) $manifest->attributes()->method == 'upgrade')
-					{
-						$this->upgrade = true;
-						$this->overwrite = true;
-					}
-
-					// If the overwrite option is set, allow file overwriting
-					if ((string) $manifest->attributes()->overwrite == 'true')
-					{
-						$this->overwrite = true;
-					}
-
-					// Set the manifest object and path
-					$this->manifest = $manifest;
-					$this->setPath('manifest', $file);
-
-					// Set the installation source path to that of the manifest file
-					$this->setPath('source', dirname($file));
-
-					return true;
-				}
-			}
-
-			// None of the XML files found were valid install files
-			JLog::add(JText::_('JLIB_INSTALLER_ERROR_NOTFINDJOOMLAXMLSETUPFILE'), JLog::WARNING, 'jerror');
-
-			return false;
-		}
-		else
+		if (empty($xmlfiles))
 		{
 			// No XML files were found in the install folder
 			JLog::add(JText::_('JLIB_INSTALLER_ERROR_NOTFINDXMLSETUPFILE'), JLog::WARNING, 'jerror');
 
 			return false;
 		}
+
+		foreach ($xmlfiles as $file)
+		{
+			// Is it a valid Joomla installation manifest file?
+			$manifest = $this->isManifest($file);
+
+			if (!is_null($manifest))
+			{
+				// If the root method attribute is set to upgrade, allow file overwrite
+				if ((string) $manifest->attributes()->method == 'upgrade')
+				{
+					$this->upgrade = true;
+					$this->overwrite = true;
+				}
+
+				// If the overwrite option is set, allow file overwriting
+				if ((string) $manifest->attributes()->overwrite == 'true')
+				{
+					$this->overwrite = true;
+				}
+
+				// Set the manifest object and path
+				$this->manifest = $manifest;
+				$this->setPath('manifest', $file);
+
+				// Set the installation source path to that of the manifest file
+				$this->setPath('source', dirname($file));
+
+				return true;
+			}
+		}
+
+		// None of the XML files found were valid install files
+		JLog::add(JText::_('JLIB_INSTALLER_ERROR_NOTFINDJOOMLAXMLSETUPFILE'), JLog::WARNING, 'jerror');
+
+		return false;
 	}
 
 	/**
@@ -2077,16 +2046,15 @@ class JInstaller
 	 */
 	public function cleanDiscoveredExtension($type, $element, $folder = '', $client = 0)
 	{
-		$dbo = $this->getDbo();
-		$query = $dbo->getQuery(true);
-		$query->delete($dbo->quoteName('#__extensions'));
-		$query->where('type = ' . $dbo->Quote($type));
-		$query->where('element = ' . $dbo->Quote($element));
-		$query->where('folder = ' . $dbo->Quote($folder));
+		$query = $this->db->getQuery(true);
+		$query->delete($this->db->quoteName('#__extensions'));
+		$query->where('type = ' . $this->db->Quote($type));
+		$query->where('element = ' . $this->db->Quote($element));
+		$query->where('folder = ' . $this->db->Quote($folder));
 		$query->where('client_id = ' . (int) $client);
 		$query->where('state = -1');
 
-		return $dbo->execute();
+		return $this->db->execute();
 	}
 
 	/**
@@ -2099,7 +2067,7 @@ class JInstaller
 	 *
 	 * @since   3.1
 	 */
-	public function findDeletedFiles($old_files, $new_files)
+	public function findDeletedFiles(SimpleXMLElement $old_files, SimpleXMLElement $new_files)
 	{
 		// The magic find deleted files function!
 		// The files that are new

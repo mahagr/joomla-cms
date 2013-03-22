@@ -262,6 +262,7 @@ abstract class JInstallerAdapter
 				return $this->$name;
 
 			default :
+				// Deprecated
 				return isset($this->$name) ? $this->$name : null;
 		}
 		return null;
