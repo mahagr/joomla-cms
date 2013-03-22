@@ -29,27 +29,6 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	protected $clientId;
 
 	/**
-	 * Method to check if the extension is already present in the database
-	 *
-	 * @return  void
-	 *
-	 * @since   3.1
-	 * @throws  RuntimeException
-	 */
-	protected function checkExistingExtension()
-	{
-		try
-		{
-			$this->currentExtensionId = $this->extension->find(array('element' => $this->element, 'type' => $this->type, 'client_id' => $this->clientId));
-		}
-		catch (RuntimeException $e)
-		{
-			// Install failed, roll back changes
-			throw new RuntimeException(JText::sprintf('JLIB_INSTALLER_ABORT_MOD_ROLLBACK', JText::_('JLIB_INSTALLER_' . $this->route), $e->getMessage()));
-		}
-	}
-
-	/**
 	 * Method to copy the extension's base files from the <files> tag(s) and the manifest file
 	 *
 	 * @return  void
@@ -97,7 +76,7 @@ class JInstallerAdapterModule extends JInstallerAdapter
 		$update = JTable::getInstance('update');
 		$uid = $update->find(
 			array(
-				'element' => $this->element,
+				'element' => $this->extension->element,
 				'type' => $this->type,
 				'client_id' => $this->clientId
 			)
@@ -117,33 +96,65 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	}
 
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @param   string  $element  Optional element name to be converted
-	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
-	{
-		if (!$element)
-		{
-			if (count($this->manifest->files->children()))
-			{
-				foreach ($this->manifest->files->children() as $file)
-				{
-					if ((string) $file->attributes()->module)
-					{
-						$element = (string) $file->attributes()->module;
+	protected function getManifestLookupPaths() {
+		$client = JApplicationHelper::getClientInfo($this->extension->client_id);
+		if (!$client){
+			return array();
+		}
 
-						break;
-					}
-				}
+		$path = $client->path . '/modules/' . $this->extension->element;
+
+		return array($path);
+	}
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
+	{
+		$files = $manifest->files->children();
+		if (count($files) == 0)
+		{
+			return null;
+		}
+
+		foreach ($files as $file)
+		{
+			$name = (string) $file->attributes()->module;
+			if ($name)
+			{
+				return $this->filterElement($name);
 			}
 		}
 
-		return $element;
+		return null;
+	}
+
+	/**
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
+	{
+		// TODO: add filtering?
+		return $name;
 	}
 
 	/**
@@ -255,12 +266,10 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	 */
 	public function discover_install()
 	{
-		$this->element = $this->parent->extension->element;
-
 		// Modules are like templates, and are one of the easiest
 		// If its not in the extensions table we just add it
 		$client = JApplicationHelper::getClientInfo($this->parent->extension->client_id);
-		$manifestPath = $client->path . '/modules/' . $this->element . '/' . $this->element . '.xml';
+		$manifestPath = $client->path . '/modules/' . $this->extension->element . '/' . $this->extension->element . '.xml';
 		$this->parent->manifest = $this->parent->isManifest($manifestPath);
 		$description = (string) $this->parent->manifest->description;
 
@@ -358,9 +367,9 @@ class JInstallerAdapterModule extends JInstallerAdapter
 		}
 
 		// Set the installation path
-		if (!empty($this->element))
+		if (!empty($this->extension->element))
 		{
-			$this->parent->setPath('extension_root', $basePath . '/modules/' . $this->element);
+			$this->parent->setPath('extension_root', $basePath . '/modules/' . $this->extension->element);
 		}
 		else
 		{
@@ -392,7 +401,7 @@ class JInstallerAdapterModule extends JInstallerAdapter
 				return false;
 			}
 
-			$this->parent->setPath('extension_root', $client->path . '/modules/' . $this->element);
+			$this->parent->setPath('extension_root', $client->path . '/modules/' . $this->extension->element);
 
 			$this->parent->setPath('source', $this->parent->getPath('extension_root'));
 		}
@@ -410,8 +419,7 @@ class JInstallerAdapterModule extends JInstallerAdapter
 	 */
 	protected function storeExtension()
 	{
-		// Was there a module already installed with the same name?
-		if ($this->currentExtensionId)
+		if ($this->extension->extension_id > 0)
 		{
 			if (!$this->parent->isOverwrite())
 			{
@@ -420,16 +428,10 @@ class JInstallerAdapterModule extends JInstallerAdapter
 					JText::sprintf(
 						'JLIB_INSTALLER_ABORT_PLG_INSTALL_ALLREADY_EXISTS',
 						JText::_('JLIB_INSTALLER_' . $this->route),
-						$this->name
+						$this->extension->name
 					)
 				);
 			}
-
-			// Load the entry and update the manifest_cache
-			$this->extension->load($this->currentExtensionId);
-
-			// Update name
-			$this->extension->name = $this->name;
 
 			// Update manifest
 			$this->extension->manifest_cache = $this->parent->generateManifestCache();
@@ -442,9 +444,7 @@ class JInstallerAdapterModule extends JInstallerAdapter
 		}
 		else
 		{
-			$this->extension->name = $this->name;
 			$this->extension->type = 'module';
-			$this->extension->element = $this->element;
 
 			// There is no folder for modules
 			$this->extension->folder = '';
@@ -475,12 +475,12 @@ class JInstallerAdapterModule extends JInstallerAdapter
 			$this->parent->pushStep(array('type' => 'extension', 'extension_id' => $this->extension->extension_id));
 
 			// Create unpublished module in jos_modules
-			$name = preg_replace('#[\*?]#', '', JText::_($this->name));
+			$name = preg_replace('#[\*?]#', '', JText::_($this->extension->name));
 			$module = JTable::getInstance('module');
 
 			$module->title = $name;
 			$module->content = '';
-			$module->module = $this->element;
+			$module->module = $this->extension->element;
 			$module->access = '1';
 			$module->showtitle = '1';
 			$module->params = '';
@@ -513,7 +513,7 @@ class JInstallerAdapterModule extends JInstallerAdapter
 		$this->manifest = $this->parent->getManifest();
 
 		// Attempt to load the language file; might have uninstall strings
-		$this->loadLanguage(($this->extension->client_id ? JPATH_ADMINISTRATOR : JPATH_SITE) . '/modules/' . $this->element);
+		$this->loadLanguage(($this->extension->client_id ? JPATH_ADMINISTRATOR : JPATH_SITE) . '/modules/' . $this->extension->element);
 
 		$this->setupScriptfile();
 		$this->triggerManifestScript('uninstall');

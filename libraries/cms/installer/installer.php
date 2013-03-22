@@ -951,7 +951,7 @@ class JInstaller
 	 */
 	public function parseQueries(SimpleXMLElement $element)
 	{
-		if (count($element->children()) == 0)
+		if (!$element || count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;
@@ -1082,7 +1082,7 @@ class JInstaller
 
 		$schemapaths = $schema->children();
 
-		if (count($schemapaths) == 0)
+		if (!$schemapaths || count($schemapaths) == 0)
 		{
 			return;
 		}
@@ -1148,7 +1148,7 @@ class JInstaller
 
 		$schemapaths = $schema->children();
 
-		if (count($schemapaths) == 0)
+		if (!$schemapaths || count($schemapaths) == 0)
 		{
 			return 0;
 		}
@@ -1277,7 +1277,7 @@ class JInstaller
 	public function parseFiles(SimpleXMLElement $element, $cid = 0, $oldFiles = null)
 	{
 		// Get the array of file nodes to process; we checked whether this had children above.
-		if (count($element->children()) == 0)
+		if (!$element || count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children (hence no files to process) therefore we return zero files processed.
 			return 0;
@@ -1400,7 +1400,7 @@ class JInstaller
 	public function parseLanguages(SimpleXMLElement $element, $cid = 0)
 	{
 		// TODO: work out why the below line triggers 'node no longer exists' errors with files
-		if (count($element->children()) == 0)
+		if (!$element || count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;
@@ -1512,7 +1512,7 @@ class JInstaller
 	 */
 	public function parseMedia(SimpleXMLElement $element)
 	{
-		if (count($element->children()) == 0)
+		if (!$element || count($element->children()) == 0)
 		{
 			// Either the tag does not exist or has no children therefore we return zero files processed.
 			return 0;

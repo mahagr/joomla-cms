@@ -29,21 +29,50 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 	protected $manifestFile;
 
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
-	{
-		if (!$element)
-		{
-			$manifestPath = JPath::clean($this->parent->getPath('manifest'));
-			$element = preg_replace('/\.xml/', '', basename($manifestPath));
-		}
+	protected function getManifestLookupPaths() {
+		$path = JPATH_MANIFESTS . '/libraries/' . $this->extension->element . '.xml';
 
-		return $element;
+		return array($path);
+	}
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
+	{
+		// FIXME: doesn't work with parameters (needs filename)!
+		$name = $this->parent->getPath('manifest');
+
+		return $this->filterElement($name);
+	}
+
+	/**
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
+	{
+		// TODO: add better filtering
+		$name = preg_replace('/\.xml/', '', basename(JPath::clean($name)));
+
+		return $name;
 	}
 
 	/**
@@ -61,10 +90,10 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 
 		if (!$source)
 		{
-			$this->parent->setPath('source', JPATH_PLATFORM . '/' . $this->element);
+			$this->parent->setPath('source', JPATH_PLATFORM . '/' . $this->extension->element);
 		}
 
-		$extension = 'lib_' . $this->element;
+		$extension = 'lib_' . $this->extension->element;
 		$librarypath = (string) $this->manifest->libraryname;
 		$source = $path ? $path : JPATH_PLATFORM . '/' . $librarypath;
 
@@ -97,8 +126,7 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 		 * ---------------------------------------------------------------------------------------------
 		 */
 
-		$extension_id = $this->extension->find(array('element' => $this->element, 'type' => 'library'));
-		if ($extension_id)
+		if ($this->extension->extension_id)
 		{
 			// Already installed, can we upgrade?
 			// TODO: Why, just tell me why?
@@ -106,7 +134,7 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 			{
 				// We can upgrade, so uninstall the old one
 				$installer = new JInstaller; // we don't want to compromise this instance!
-				$installer->uninstall('library', $extension_id);
+				$installer->uninstall('library', $this->extension->extension_id);
 			}
 			else
 			{
@@ -168,9 +196,7 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 		$this->parent->parseMedia($this->manifest->media);
 
 		// Extension Registration
-		$this->extension->name = $this->name;
 		$this->extension->type = 'library';
-		$this->extension->element = $this->element;
 
 		// There is no folder for libraries
 		$this->extension->folder = '';
@@ -225,7 +251,7 @@ class JInstallerAdapterLibrary extends JInstallerAdapter
 		// Run the common parent methods
 		if (parent::setupUninstall())
 		{
-			$this->manifestFile = JPATH_MANIFESTS . '/libraries/' . $this->element . '.xml';
+			$this->manifestFile = JPATH_MANIFESTS . '/libraries/' . $this->extension->element . '.xml';
 
 			// Because files may not have their own folders we cannot use the standard method of finding an installation manifest
 			if (file_exists($this->manifestFile))

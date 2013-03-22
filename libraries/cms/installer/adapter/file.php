@@ -20,6 +20,8 @@ jimport('joomla.filesystem.folder');
  */
 class JInstallerAdapterFile extends JInstallerAdapter
 {
+	protected $folderList = array();
+
 	/**
 	 * Method to copy the extension's base files from the <files> tag(s) and the manifest file
 	 *
@@ -70,7 +72,7 @@ class JInstallerAdapterFile extends JInstallerAdapter
 		$update = JTable::getInstance('update');
 		$uid = $update->find(
 			array(
-				'element' => $this->element,
+				'element' => $this->extension->element,
 				'type' => $this->type
 			)
 		);
@@ -115,26 +117,33 @@ class JInstallerAdapterFile extends JInstallerAdapter
 	}
 
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @param   string  $element  Optional element name to be converted
-	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
+	protected function getManifestLookupPaths() {
+		$path = JPATH_MANIFESTS . '/files/' . $this->extension->element . '.xml';
+
+		return array($path);
+	}
+
+	/**
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
 	{
-		if (!$element)
-		{
-			// Ensure the element is a string
-			$element = (string) $this->manifest->name;
+		// Filter the name for illegal characters
+		$name = str_replace('files_', '', JFilterInput::getInstance()->clean($name, 'cmd'));
 
-			// Filter the name for illegal characters
-			$element = str_replace('files_', '', JFilterInput::getInstance()->clean($element, 'cmd'));
-		}
-
-		return $element;
+		return $name;
 	}
 
 	/**
@@ -148,7 +157,7 @@ class JInstallerAdapterFile extends JInstallerAdapter
 	 */
 	public function loadLanguage($path)
 	{
-		$extension = 'files_' . strtolower(str_replace('files_', '', $this->name));
+		$extension = 'files_' . strtolower(str_replace('files_', '', $this->extension->name));
 
 		$this->doLoadLanguage($extension, $path);
 	}
@@ -169,13 +178,13 @@ class JInstallerAdapterFile extends JInstallerAdapter
 		// Run the common parent methods
 		if (parent::setupUninstall())
 		{
-			$this->manifestFile = JPATH_MANIFESTS . '/files/' . $this->element . '.xml';
+			$this->manifestFile = JPATH_MANIFESTS . '/files/' . $this->extension->element . '.xml';
 
 			// Because files may not have their own folders we cannot use the standard method of finding an installation manifest
 			if (file_exists($this->manifestFile))
 			{
 				// Set the files root path
-				$this->parent->setPath('extension_root', JPATH_MANIFESTS . '/files/' . $this->element);
+				$this->parent->setPath('extension_root', JPATH_MANIFESTS . '/files/' . $this->extension->element);
 
 				$xml = simplexml_load_file($this->manifestFile);
 
@@ -445,14 +454,14 @@ class JInstallerAdapterFile extends JInstallerAdapter
 	protected function setupInstallPaths()
 	{
 		// Set the file root path
-		if ($this->name == 'files_joomla')
+		if ($this->extension->name == 'files_joomla')
 		{
 			// If we are updating the Joomla core, set the root path to the root of Joomla
 			$this->parent->setPath('extension_root', JPATH_ROOT);
 		}
 		else
 		{
-			$this->parent->setPath('extension_root', JPATH_MANIFESTS . '/files/' . $this->element);
+			$this->parent->setPath('extension_root', JPATH_MANIFESTS . '/files/' . $this->extension->element);
 		}
 	}
 
@@ -466,14 +475,8 @@ class JInstallerAdapterFile extends JInstallerAdapter
 	 */
 	protected function storeExtension()
 	{
-		if ($this->currentExtensionId)
+		if ($this->extension->extension_id > 0)
 		{
-			// Load the entry and update the manifest_cache
-			$this->extension->load($this->currentExtensionId);
-
-			// Update name
-			$this->extension->name = $this->name;
-
 			// Update manifest
 			$this->extension->manifest_cache = $this->parent->generateManifestCache();
 
@@ -491,9 +494,7 @@ class JInstallerAdapterFile extends JInstallerAdapter
 		else
 		{
 			// Add an entry to the extension table with a whole heap of defaults
-			$this->extension->name = $this->name;
 			$this->extension->type = 'file';
-			$this->extension->element = $this->element;
 
 			// There is no folder for files so leave it blank
 			$this->extension->folder = '';

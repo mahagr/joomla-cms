@@ -211,7 +211,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		$update = JTable::getInstance('update');
 		$uid = $update->find(
 			array(
-				'element' => $this->element,
+				'element' => $this->extension->element,
 				'type' => $this->type,
 				'client_id' => 1
 			)
@@ -256,6 +256,21 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	}
 
 	/**
+	 * Get manifest lookup directories or files
+	 *
+	 * @return  array  Lookup paths
+	 *
+	 * @since   3.1
+	 */
+	protected function getManifestLookupPaths() {
+		$path = array();
+		$path[] = JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element);
+		$path[] = JPath::clean(JPATH_SITE . '/components/' . $this->extension->element);
+
+		return $path;
+	}
+
+	/**
 	 * Get the filtered extension element from the manifest
 	 *
 	 * @param   string  $element  Optional element name to be converted
@@ -264,16 +279,16 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
+	public function filterElement($name)
 	{
-		$element = parent::getElement($element);
+		$name = parent::filterElement($name);
 
-		if (substr($element, 0, 4) != 'com_')
+		if (substr($name, 0, 4) != 'com_')
 		{
-			$element = 'com_' . $element;
+			$name = 'com_' . $name;
 		}
 
-		return $element;
+		return $name;
 	}
 
 	/**
@@ -295,7 +310,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 			$this->parent->setPath('source', $client . '/components/' . $this->parent->extension->element);
 		}
 
-		$source = $path ? $path : $client . '/components/' . $this->element;
+		$source = $path ? $path : $client . '/components/' . $this->extension->element;
 
 		if ($this->manifest->administration->files)
 		{
@@ -320,7 +335,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 			}
 		}
 
-		$this->doLoadLanguage($this->element, $source, JPATH_ADMINISTRATOR);
+		$this->doLoadLanguage($this->extension->element, $source, JPATH_ADMINISTRATOR);
 	}
 
 	/**
@@ -354,16 +369,6 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		try
 		{
 			$this->setupInstallPaths();
-		}
-		catch (RuntimeException $e)
-		{
-			throw $e;
-		}
-
-		// Check to see if an extension by the same name is already installed.
-		try
-		{
-			$this->checkExistingExtension();
 		}
 		catch (RuntimeException $e)
 		{
@@ -503,8 +508,8 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		}
 
 		// Set the installation target paths
-		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->element));
-		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->element));
+		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->extension->element));
+		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element));
 
 		// Copy the admin path as it's used as a common base
 		$this->parent->setPath('extension_root', $this->parent->getPath('extension_administrator'));
@@ -666,7 +671,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		 */
 
 		// Let's run the update queries for the component
-		$eid = $this->extension->find(array('element' => strtolower($this->element), 'type' => 'component'));
+		$eid = $this->extension->extension_id;
 
 		if ($this->manifest->update)
 		{
@@ -701,7 +706,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 
 		// Clobber any possible pending updates
 		$update = JTable::getInstance('update');
-		$uid = $update->find(array('element' => $this->element, 'type' => 'component', 'client_id' => 1, 'folder' => ''));
+		$uid = $update->find(array('element' => $this->extension->element, 'type' => 'component', 'client_id' => 1, 'folder' => ''));
 
 		if ($uid)
 		{
@@ -725,9 +730,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 			$this->extension->params = $this->parent->getParams();
 		}
 
-		$this->extension->name = $this->name;
 		$this->extension->type = 'component';
-		$this->extension->element = $this->element;
 		$this->extension->manifest_cache = $this->parent->generateManifestCache();
 
 		if (!$this->extension->store())
@@ -765,8 +768,8 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		if (parent::setupUninstall())
 		{
 			// Get the admin and site paths for the component
-			$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->element));
-			$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->element));
+			$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element));
+			$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->extension->element));
 
 			// Copy the admin path as it's used as a common base
 			$this->parent->setPath('extension_root', $this->parent->getPath('extension_administrator'));
@@ -820,7 +823,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		}
 
 		// Attempt to load the admin language file; might have uninstall strings
-		$this->loadLanguage(JPATH_ADMINISTRATOR . '/components/' . $this->element);
+		$this->loadLanguage(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element);
 
 		/**
 		 * ---------------------------------------------------------------------------------------------
@@ -873,7 +876,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		// Remove the component container in the assets table.
 		$asset = JTable::getInstance('Asset');
 
-		if ($asset->loadByName($this->element))
+		if ($asset->loadByName($this->extension->element))
 		{
 			$asset->delete();
 		}
@@ -881,8 +884,8 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		// Remove categories for this component
 		$query = $this->db->getQuery(true);
 		$query->delete($this->db->quoteName('#__categories'))
-			->where($this->db->quoteName('extension') . ' = ' . $this->db->quote($this->element), 'OR')
-			->where($this->db->quoteName('extension') . ' LIKE ' . $this->db->quote($this->element . '.%'));
+			->where($this->db->quoteName('extension') . ' = ' . $this->db->quote($this->extension->element), 'OR')
+			->where($this->db->quoteName('extension') . ' LIKE ' . $this->db->quote($this->extension->element . '.%'));
 		$this->db->setQuery($query);
 		$this->db->execute();
 
@@ -903,7 +906,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		}
 
 		// Now we need to delete the installation directories. This is the final step in uninstalling the component.
-		if (trim($this->element))
+		if (trim($this->extension->element))
 		{
 			// Delete the component site directory
 			if (is_dir($this->parent->getPath('extension_site')))
@@ -949,7 +952,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	protected function _buildAdminMenus()
 	{
 		$table = JTable::getInstance('menu');
-		$option = $this->element;
+		$option = $this->extension->element;
 
 		// If a component exists with this option in the table then we don't need to add menus
 		$query = $this->db->getQuery(true);
@@ -1334,15 +1337,13 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	 */
 	public function discover_install()
 	{
-		$this->element = $this->parent->extension->element;
-
 		// Need to find to find where the XML file is since we don't store this normally
 		$client = JApplicationHelper::getClientInfo($this->parent->extension->client_id);
-		$short_element = str_replace('com_', '', $this->element);
-		$manifestPath = $client->path . '/components/' . $this->element . '/' . $short_element . '.xml';
+		$short_element = str_replace('com_', '', $this->extension->element);
+		$manifestPath = $client->path . '/components/' . $this->extension->element . '/' . $short_element . '.xml';
 		$this->parent->manifest = $this->parent->isManifest($manifestPath);
 		$this->parent->setPath('manifest', $manifestPath);
-		$this->parent->setPath('source', $client->path . '/components/' . $this->element);
+		$this->parent->setPath('source', $client->path . '/components/' . $this->extension->element);
 		$this->parent->setPath('extension_root', $this->parent->getPath('source'));
 
 		$manifest_details = JInstaller::parseXMLInstallFile($this->parent->getPath('manifest'));
@@ -1384,8 +1385,8 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 		}
 
 		// Set the installation target paths
-		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->element));
-		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->element));
+		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->extension->element));
+		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element));
 
 		// Copy the admin path as it's used as a common base
 		$this->parent->setPath('extension_root', $this->parent->getPath('extension_administrator'));
@@ -1459,7 +1460,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 
 		// Clobber any possible pending updates
 		$update = JTable::getInstance('update');
-		$uid = $update->find(array('element' => $this->element, 'type' => 'component', 'client_id' => 1, 'folder' => ''));
+		$uid = $update->find(array('element' => $this->extension->element, 'type' => 'component', 'client_id' => 1, 'folder' => ''));
 
 		if ($uid)
 		{
@@ -1515,8 +1516,8 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	protected function setupInstallPaths()
 	{
 		// Set the installation target paths
-		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->element));
-		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->element));
+		$this->parent->setPath('extension_site', JPath::clean(JPATH_SITE . '/components/' . $this->extension->element));
+		$this->parent->setPath('extension_administrator', JPath::clean(JPATH_ADMINISTRATOR . '/components/' . $this->extension->element));
 
 		// Copy the admin path as it's used as a common base
 		$this->parent->setPath('extension_root', $this->parent->getPath('extension_administrator'));
@@ -1539,9 +1540,7 @@ class JInstallerAdapterComponent extends JInstallerAdapter
 	protected function storeExtension()
 	{
 		// Add an entry to the extension table with a whole heap of defaults
-		$this->extension->name = $this->name;
 		$this->extension->type = 'component';
-		$this->extension->element = $this->element;
 
 		// There is no folder for components
 		$this->extension->folder = '';

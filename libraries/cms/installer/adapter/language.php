@@ -21,20 +21,62 @@ jimport('joomla.filesystem.folder');
 class JInstallerAdapterLanguage extends JInstallerAdapter
 {
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
-	{
-		if (!$element)
-		{
-			$element = (string) $this->manifest->tag;
+	protected function getManifestLookupPaths() {
+		$client = JApplicationHelper::getClientInfo($this->extension->client_id);
+		if (!$client){
+			return array();
 		}
 
-		return $element;
+		$path = $client->path . '/language/' . $this->extension->element;
+
+		return array($path);
+	}
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
+	{
+		// Ensure the element is a string
+		$name = (string) $manifest->tag;
+
+		if (!$name)
+		{
+			// Fall back to extension name.
+			$name = (string) $manifest->element;
+		}
+
+		// Filter the name for illegal characters
+		$name = $this->filterElement($name);
+
+		return $name;
+	}
+
+	/**
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
+	{
+		// TODO: add filtering for aaa*-AAA*
+		return $name;
 	}
 
 	/**
@@ -208,7 +250,6 @@ class JInstallerAdapterLanguage extends JInstallerAdapter
 		}
 
 		// Add an entry to the extension table with a whole heap of defaults
-		$this->extension->name = $this->name;
 		$this->extension->type = 'language';
 		$this->extension->element = $this->tag;
 
@@ -335,7 +376,6 @@ class JInstallerAdapterLanguage extends JInstallerAdapter
 			$this->extension->client_id = $clientId;
 			$this->extension->params = $this->parent->getParams();
 		}
-		$this->extension->name = $this->name;
 		$this->extension->type = 'language';
 		$this->extension->element = $this->tag;
 		$this->extension->manifest_cache = $this->parent->generateManifestCache();
@@ -466,7 +506,7 @@ class JInstallerAdapterLanguage extends JInstallerAdapter
 			$registry = new JRegistry;
 			$registry->loadString($user->params);
 
-			if ($registry->get($param_name) == $this->element)
+			if ($registry->get($param_name) == $this->extension->element)
 			{
 				$registry->set($param_name, '');
 				$query = $this->db->getQuery(true);

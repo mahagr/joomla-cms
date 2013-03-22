@@ -66,7 +66,7 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 				$this->parent->setOverwrite(true);
 				$this->parent->setUpgrade(true);
 
-				if ($this->currentExtensionId)
+				if ($this->extension->extension_id > 0)
 				{
 					// If there is a matching extension mark this as an update
 					$this->setRoute('update');
@@ -166,7 +166,7 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 		$update = JTable::getInstance('update');
 		$uid = $update->find(
 			array(
-				'element' => $this->element,
+				'element' => $this->extension->element,
 				'type' => $this->type,
 			)
 		);
@@ -213,6 +213,45 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	}
 
 	/**
+	 * Get manifest lookup directories or files
+	 *
+	 * @return  array  Lookup paths
+	 *
+	 * @since   3.1
+	 */
+	protected function getManifestLookupPaths() {
+		$path = JPATH_MANIFESTS . '/packages/' . $this->extension->element . '.xml';
+
+		return array($path);
+	}
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
+	{
+		// Ensure the element is a string
+		$name = (string) $manifest->packagename;
+
+		if (!$name)
+		{
+			// Fall back to extension name.
+			$name = (string) $manifest->element;
+		}
+
+		// Filter the name for illegal characters
+		$name = $this->filterElement($name);
+
+		return $name;
+	}
+
+	/**
 	 * Get the filtered extension element from the manifest
 	 *
 	 * @param   string  $element  Optional element name to be converted
@@ -221,18 +260,11 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
+	public function filterElement($name)
 	{
-		if (!$element)
-		{
-			// Ensure the element is a string
-			$element = (string) $this->manifest->packagename;
+		$name = 'pkg_' . JFilterInput::getInstance()->clean($name, 'cmd');
 
-			// Filter the name for illegal characters
-			$element = 'pkg_' . JFilterInput::getInstance()->clean($element, 'cmd');
-		}
-
-		return $element;
+		return $name;
 	}
 
 	/**
@@ -246,7 +278,7 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	 */
 	public function loadLanguage($path)
 	{
-		$this->doLoadLanguage($this->element, $path);
+		$this->doLoadLanguage($this->extension->element, $path);
 	}
 
 	/**
@@ -483,7 +515,7 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 	 */
 	protected function storeExtension()
 	{
-		if ($this->currentExtensionId)
+		if ($this->extension->extension_id > 0)
 		{
 			if (!$this->parent->isOverwrite())
 			{
@@ -492,20 +524,14 @@ class JInstallerAdapterPackage extends JInstallerAdapter
 					JText::sprintf(
 						'JLIB_INSTALLER_ABORT_PLG_INSTALL_ALLREADY_EXISTS',
 						JText::_('JLIB_INSTALLER_' . $this->route),
-						$this->name
+						$this->extension->name
 					)
 				);
 			}
-
-			$this->extension->load($this->currentExtensionId);
-
-			$this->extension->name = $this->name;
 		}
 		else
 		{
-			$this->extension->name = $this->name;
 			$this->extension->type = 'package';
-			$this->extension->element = $this->element;
 
 			// There is no folder for modules
 			$this->extension->folder = '';

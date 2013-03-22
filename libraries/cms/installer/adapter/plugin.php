@@ -51,27 +51,6 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	}
 
 	/**
-	 * Method to check if the extension is already present in the database
-	 *
-	 * @return  void
-	 *
-	 * @since   3.1
-	 * @throws  RuntimeException
-	 */
-	protected function checkExistingExtension()
-	{
-		try
-		{
-			$this->currentExtensionId = $this->extension->find(array('type' => $this->type, 'element' => $this->element, 'folder' => $this->group));
-		}
-		catch (RuntimeException $e)
-		{
-			// Install failed, roll back changes
-			throw new RuntimeException(JText::sprintf('JLIB_INSTALLER_ABORT_PLG_INSTALL_ROLLBACK', JText::_('JLIB_INSTALLER_' . $this->route), $e->getMessage()));
-		}
-	}
-
-	/**
 	 * Method to copy the extension's base files from the <files> tag(s) and the manifest file
 	 *
 	 * @return  void
@@ -149,7 +128,7 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 		$update = JTable::getInstance('update');
 		$uid = $update->find(
 			array(
-				'element' => $this->element,
+				'element' => $this->extension->element,
 				'type' => $this->type,
 				'folder' => $this->group
 			)
@@ -169,36 +148,69 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	}
 
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @param   string  $element  Optional element name to be converted
-	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
-	{
-		if (!$element)
+	protected function getManifestLookupPaths() {
+		if (trim($this->extension->folder) == '')
 		{
-			// Backward Compatibility
-			// @todo Deprecate in future version
+			return array();
+		}
 
-			if (count($this->manifest->files->children()))
+		// Set the plugin root path
+		$path = JPATH_PLUGINS . '/' . $this->extension->folder . '/' . $this->extension->element;
+
+		return array($path);
+	}
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
+	{
+		$files = $manifest->files->children();
+		if (count($files) == 0)
+		{
+			return null;
+		}
+
+		// Backward Compatibility
+		// @todo Deprecate in future version
+		$type = (string) $this->manifest->attributes()->type;
+		foreach ($files as $file)
+		{
+			$name = (string) $file->attributes()->$type;
+			if ($name)
 			{
-				$type = (string) $this->manifest->attributes()->type;
-				foreach ($this->manifest->files->children() as $file)
-				{
-					if ((string) $file->attributes()->$type)
-					{
-						$element = (string) $file->attributes()->$type;
-						break;
-					}
-				}
+				return $this->filterElement($name);
 			}
 		}
 
-		return $element;
+		return null;
+	}
+
+	/**
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
+	{
+		// TODO: add filtering?
+		return $name;
 	}
 
 	/**
@@ -261,7 +273,7 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	 */
 	protected function getScriptClassName()
 	{
-		return 'plg' . str_replace('-', '', $this->group) . $this->element . 'InstallerScript';
+		return 'plg' . str_replace('-', '', $this->group) . $this->extension->element . 'InstallerScript';
 	}
 
 	/**
@@ -435,7 +447,6 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	 */
 	public function discover_install()
 	{
-		$this->element = $this->parent->extension->element;
 		$this->group = $this->parent->extension->folder;
 
 		/*
@@ -444,13 +455,13 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 		 * If it's not in the extensions table we just add it
 		 */
 		// @deprecated  4.0  This conditional handles 1.5 style plugin installs, all other support was dropped for 3.0
-		if (is_dir(JPATH_SITE . '/plugins/' . $this->group . '/' . $this->element))
+		if (is_dir(JPATH_SITE . '/plugins/' . $this->group . '/' . $this->extension->element))
 		{
-			$manifestPath = JPATH_SITE . '/plugins/' . $this->group . '/' . $this->element . '/' . $this->element . '.xml';
+			$manifestPath = JPATH_SITE . '/plugins/' . $this->group . '/' . $this->extension->element . '/' . $this->extension->element . '.xml';
 		}
 		else
 		{
-			$manifestPath = JPATH_SITE . '/plugins/' . $this->group . '/' . $this->element . '.xml';
+			$manifestPath = JPATH_SITE . '/plugins/' . $this->group . '/' . $this->extension->element . '.xml';
 		}
 		$this->parent->manifest = $this->parent->isManifest($manifestPath);
 		$description = (string) $this->parent->manifest->description;
@@ -527,9 +538,9 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	 */
 	protected function setupInstallPaths()
 	{
-		if (!empty($this->element) && !empty($this->group))
+		if (!empty($this->extension->element) && !empty($this->group))
 		{
-			$this->parent->setPath('extension_root', JPATH_PLUGINS . '/' . $this->group . '/' . $this->element);
+			$this->parent->setPath('extension_root', JPATH_PLUGINS . '/' . $this->group . '/' . $this->extension->element);
 		}
 		else
 		{
@@ -547,8 +558,7 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 	 */
 	protected function storeExtension()
 	{
-		// Was there a plugin with the same name already installed?
-		if ($this->currentExtensionId)
+		if ($this->extension->extension_id > 0)
 		{
 			if (!$this->parent->isOverwrite())
 			{
@@ -557,12 +567,10 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 					JText::sprintf(
 						'JLIB_INSTALLER_ABORT_PLG_INSTALL_ALLREADY_EXISTS',
 						JText::_('JLIB_INSTALLER_' . $this->route),
-						$this->name
+						$this->extension->name
 					)
 				);
 			}
-			$this->extension->load($this->currentExtensionId);
-			$this->extension->name = $this->name;
 			$this->extension->manifest_cache = $this->parent->generateManifestCache();
 
 			// Update the manifest cache and name
@@ -571,10 +579,8 @@ class JInstallerAdapterPlugin extends JInstallerAdapter
 		else
 		{
 			// Store in the extensions table (1.6)
-			$this->extension->name = $this->name;
 			$this->extension->type = 'plugin';
 			$this->extension->ordering = 0;
-			$this->extension->element = $this->element;
 			$this->extension->folder = $this->group;
 			$this->extension->enabled = 0;
 			$this->extension->protected = 0;

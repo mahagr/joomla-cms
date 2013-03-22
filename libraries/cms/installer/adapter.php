@@ -19,32 +19,12 @@ defined('JPATH_PLATFORM') or die;
 abstract class JInstallerAdapter
 {
 	/**
-	 * ID for the currently installed extension if present
-	 *
-	 * @var    integer
-	 * @since  3.1
-	 *
-	 * @todo   Use $this->extension->extension_id instead.
-	 */
-	protected $currentExtensionId = null;
-
-	/**
 	 * Database driver
 	 *
 	 * @var    JDatabaseDriver
 	 * @since  3.1
 	 */
 	protected $db = null;
-
-	/**
-	 * The unique identifier for the extension (e.g. mod_login)
-	 *
-	 * @var    string
-	 * @since  3.1
-	 *
-	 * @todo   Use $this->extension->element instead and remove this one.
-	 */
-	protected $element = null;
 
 	/**
 	 * Extension object.
@@ -63,7 +43,7 @@ abstract class JInstallerAdapter
 	protected $extensionMessage = '';
 
 	/**
-	 * Copy of the XML manifest file.
+	 * Copy of the latest/new XML manifest file.
 	 *
 	 * @var    string
 	 * @since  3.1
@@ -78,16 +58,6 @@ abstract class JInstallerAdapter
 	 * @since  3.1
 	 * */
 	protected $manifest_script = null;
-
-	/**
-	 * Name of the extension
-	 *
-	 * @var    string
-	 * @since  3.1
-	 *
-	 * @todo   Use $this->extension->name instead and remove this one.
-	 */
-	protected $name = null;
 
 	/**
 	 * JInstaller instance accessible from the adapters
@@ -150,18 +120,17 @@ abstract class JInstallerAdapter
 		{
 			$this->manifest = $this->findManifest();
 		}
-
-		// Set name and element
-		// TODO: remove and use internally $this->extension instead.
-		$this->name = $this->getName();
-		$this->element = $this->getElement();
-
 		// Get a generic JTableExtension instance for use if not already loaded
 		if (!($this->extension instanceof JTable))
 		{
 			$this->extension = JTable::getInstance('extension');
+		}
+
+		if ($this->manifest)
+		{
+			// Always update following information from the manifest.
+			$this->extension->element = $this->getElementFromManifest($this->manifest);
 			$this->extension->name = $this->getName();
-			$this->extension->element = $this->getElement();
 			// TODO: do we want to pre-fill other values as well?
 		}
 	}
@@ -266,40 +235,13 @@ abstract class JInstallerAdapter
 	}
 
 	/**
-	 * Load extension by element name.
+	 * Load extension by element name (and other optional information).
 	 *
 	 * @param string $element
 	 */
 	protected function loadExtension($element)
 	{
 		$this->extension->load(array('element' => $element, 'type' => $this->type));
-	}
-
-	/**
-	 * Method to check if the extension is already present in the database
-	 *
-	 * @return  void
-	 *
-	 * @since   3.1
-	 * @throws  RuntimeException
-	 */
-	protected function checkExistingExtension()
-	{
-		try
-		{
-			$this->currentExtensionId = $this->extension->find(array('element' => $this->element, 'type' => $this->type));
-		}
-		catch (RuntimeException $e)
-		{
-			// Install failed, roll back changes
-			throw new RuntimeException(
-				JText::sprintf(
-					'JLIB_INSTALLER_ABORT_PLG_INSTALL_ROLLBACK',
-					JText::_('JLIB_INSTALLER_' . $this->route),
-					$e->getMessage()
-				)
-			);
-		}
 	}
 
 	/**
@@ -325,7 +267,7 @@ abstract class JInstallerAdapter
 				$this->parent->setOverwrite(true);
 				$this->parent->setUpgrade(true);
 
-				if ($this->currentExtensionId)
+				if ($this->extension->extension_id > 0)
 				{
 					// If there is a matching extension mark this as an update
 					$this->setRoute('update');
@@ -495,79 +437,118 @@ abstract class JInstallerAdapter
 	}
 
 	/**
-	 * Get the filtered extension element from the manifest
+	 * Get manifest lookup directories or files
 	 *
-	 * @param   string  $element  Optional element name to be converted
-	 *
-	 * @return  string  The filtered element
+	 * @return  array  Lookup paths
 	 *
 	 * @since   3.1
 	 */
-	public function getElement($element = null)
+	abstract protected function getManifestLookupPaths();
+
+	/**
+	 * Get the filtered extension element from the manifest
+	 *
+	 * @param   object  $manifest  Manifest object
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function getElementFromManifest($manifest)
 	{
-		if (!$element)
+		// Ensure the element is a string
+		$name = (string) $manifest->element;
+
+		if (!$name)
 		{
-			// Ensure the element is a string
-			$element = (string) $this->manifest->element;
-		}
-		if (!$element)
-		{
-			$element = $this->getName();
+			// Fall back to extension name.
+			$name = $this->getName($manifest->element);
 		}
 
 		// Filter the name for illegal characters
-		$element = JFilterInput::getInstance()->clean($element, 'cmd');
+		$name = $this->filterElement($name);
 
-		return $element;
+		return $name;
 	}
 
 	/**
 	 * Find the manifest file and return it as an object.
 	 *
-	 * @return  object  Manifest object
+	 * @param   string|array  $lookup  Lookup paths or files.
+	 *
+	 * @return  object  Manifest object or null
 	 *
 	 * @since   3.1
 	 */
-	public function findManifest()
+	protected function findManifest($lookup = null)
 	{
-		// We are trying to find manifest for the installed extension.
-		// TODO: handle locally in every adapter (see uninstall to get some hints).
-		// TODO: do we also need the path to the file?
-		$manifest = $this->parent->getManifest();
-
-		return $manifest;
-	}
-
-	/**
-	 * Get the manifest object.
-	 *
-	 * @return  object  Manifest object
-	 *
-	 * @since   3.1
-	 * @deprecated
-	 * @todo Check if this function exists in the original code..
-	 */
-	public function getManifest()
-	{
-		if (!$this->manifest)
+		if (empty($lookup))
 		{
-			$this->manifest = $this->findManifest();
+			$lookup = $this->getManifestLookupPaths();
+		}
+		$lookup = (array) $lookup;
+
+		$xmlfiles = array();
+		foreach ($lookup as $path)
+		{
+			if (file_exists($path))
+			{
+				if (is_file($path)) {
+					// There is only one possibility, so lets try it.
+					$xmlfiles[] = $path;
+				}
+				else
+				{
+					// Test against all xml files in the path.
+					$xmlfiles = array_merge($xmlfiles, JFolder::files($path, '\.xml$', false, true));
+				}
+			}
 		}
 
-		return $this->manifest;
+		foreach ($xmlfiles as $filename)
+		{
+			$manifest = $this->parent->isManifest($filename);
+			if ($manifest && $this->extension->type == $this->type && $this->extension->element == $this->getElementFromManifest($manifest))
+			{
+				return $manifest;
+			}
+		}
+
+		return null;
 	}
 
 	/**
-	 * Get the filtered component name from the manifest
+	 * Filter the element name from illegal characters
+	 *
+	 * @param   string  $name  Element name to be converted
+	 *
+	 * @return  string  The filtered element name
+	 *
+	 * @since   3.1
+	 */
+	protected function filterElement($name)
+	{
+		// Filter the name for illegal characters
+		$name = JFilterInput::getInstance()->clean($name, 'cmd');
+
+		return $name;
+	}
+
+	/**
+	 * Get the filtered extension name from the manifest
+	 *
+	 * @param   string  $name  Extension name to be converted
 	 *
 	 * @return  string  The filtered name
 	 *
 	 * @since   3.1
 	 */
-	public function getName()
+	public function getName($name = null)
 	{
 		// Ensure the name is a string
-		$name = (string) $this->manifest->name;
+		if (!$name) {
+			$name = (string) $this->manifest->name;
+		}
 
 		// Filter the name for illegal characters
 		$name = JFilterInput::getInstance()->clean($name, 'string');
@@ -609,7 +590,7 @@ abstract class JInstallerAdapter
 	protected function getScriptClassName()
 	{
 		// Support element names like 'en-GB'
-		$className = JFilterInput::getInstance()->clean($this->element, 'cmd') . 'InstallerScript';
+		$className = JFilterInput::getInstance()->clean($this->extension->element, 'cmd') . 'InstallerScript';
 
 		// Cannot have - in class names
 		$className = str_replace('-', '', $className);
@@ -648,16 +629,6 @@ abstract class JInstallerAdapter
 		try
 		{
 			$this->setupInstallPaths();
-		}
-		catch (RuntimeException $e)
-		{
-			throw $e;
-		}
-
-		// Check to see if an extension by the same name is already installed.
-		try
-		{
-			$this->checkExistingExtension();
 		}
 		catch (RuntimeException $e)
 		{
